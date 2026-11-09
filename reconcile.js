@@ -5,14 +5,45 @@
 
 const fs = require("fs");
 
+function parseAmount(amount) {
+  if (typeof amount === "number") return amount;
+  if (typeof amount === "string") return parseFloat(amount.replace(/,/g, "").trim());
+  return Number(amount);
+}
+
+const lines = fs.readFileSync("payments.jsonl", "utf8").split(/\r?\n/);
+const latestEvents = new Map();
+
+for (const line of lines) {
+  const trimmed = line.trim();
+  if (!trimmed) continue;
+
+  let event;
+  try {
+    event = JSON.parse(trimmed);
+  } catch {
+    // Ignore lines that can't be read
+    continue;
+  }
+
+  if (!event || typeof event !== "object" || !event.txn_id) {
+    // Ignore events without a txn_id
+    continue;
+  }
+
+  // Only the latest attempt for each txn_id counts
+  const existing = latestEvents.get(event.txn_id);
+  if (!existing || event.ts > existing.ts) {
+    latestEvents.set(event.txn_id, event);
+  }
+}
+
 let total = 0;
 let count = 0;
 
-const lines = fs.readFileSync("payments.jsonl", "utf8").split("\n").filter((l) => l.length > 0);
-for (const line of lines) {
-  const event = JSON.parse(line);
+for (const event of latestEvents.values()) {
   if (event.status === "success") {
-    total += Number(event.amount);
+    total += parseAmount(event.amount);
     count += 1;
   }
 }
